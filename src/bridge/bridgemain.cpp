@@ -1040,6 +1040,11 @@ BRIDGE_IMPEXP duint DbgEval(const char* expression, bool* success)
     return value;
 }
 
+BRIDGE_IMPEXP void DbgMenuPrepare(int hMenu)
+{
+    _dbg_sendmessage(DBG_MENU_PREPARE, (void*)hMenu, nullptr);
+}
+
 BRIDGE_IMPEXP const char* GuiTranslateText(const char* Source)
 {
     EnterCriticalSection(&csTranslate);
@@ -1351,6 +1356,11 @@ BRIDGE_IMPEXP void GuiMenuClear(int hMenu)
     _gui_sendmessage(GUI_MENU_CLEAR, (void*)(duint)hMenu, 0);
 }
 
+BRIDGE_IMPEXP void GuiMenuRemove(int hEntryMenu)
+{
+    _gui_sendmessage(GUI_MENU_REMOVE, (void*)(duint)hEntryMenu, 0);
+}
+
 BRIDGE_IMPEXP bool GuiSelectionGet(int hWindow, SELECTIONDATA* selection)
 {
     return !!_gui_sendmessage(GUI_SELECTION_GET, (void*)(duint)hWindow, selection);
@@ -1542,9 +1552,9 @@ BRIDGE_IMPEXP void GuiFocusView(int hWindow)
     _gui_sendmessage(GUI_FOCUS_VIEW, (void*)hWindow, nullptr);
 }
 
-BRIDGE_IMPEXP void GuiLoadGraph(BridgeCFGraphList* graph, duint addr)
+BRIDGE_IMPEXP bool GuiLoadGraph(BridgeCFGraphList* graph, duint addr)
 {
-    _gui_sendmessage(GUI_LOAD_GRAPH, graph, (void*)addr);
+    return !!_gui_sendmessage(GUI_LOAD_GRAPH, graph, (void*)addr);
 }
 
 BRIDGE_IMPEXP duint GuiGraphAt(duint addr)
@@ -1631,6 +1641,11 @@ BRIDGE_IMPEXP void GuiCloseApplication()
 BRIDGE_IMPEXP void GuiFlushLog()
 {
     _gui_sendmessage(GUI_FLUSH_LOG, nullptr, nullptr);
+}
+
+BRIDGE_IMPEXP void GuiReferenceAddCommand(const char* title, const char* command)
+{
+    _gui_sendmessage(GUI_REF_ADDCOMMAND, (void*)title, (void*)command);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)

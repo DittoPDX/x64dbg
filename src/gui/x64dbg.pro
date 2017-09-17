@@ -175,11 +175,12 @@ SOURCES += \
     Src/Gui/StructWidget.cpp \
     Src/Gui/CustomizeMenuDialog.cpp \
     Src/Gui/SimpleTraceDialog.cpp \
-    Src/Gui/BreakpointsViewTable.cpp \
     Src/Utils/MRUList.cpp \
     Src/Gui/LocalVarsView.cpp \
     Src/Gui/MessagesBreakpoints.cpp \
-    Src/Gui/AboutDialog.cpp
+    Src/Gui/AboutDialog.cpp \
+    Src/Gui/BreakpointMenu.cpp \
+    Src/Gui/ComboBoxDialog.cpp
 
 
 HEADERS += \
@@ -289,11 +290,13 @@ HEADERS += \
     Src/Gui/CustomizeMenuDialog.h \
     Src/Gui/StructWidget.h \
     Src/Gui/SimpleTraceDialog.h \
-    Src/Gui/BreakpointsViewTable.h \
     Src/Utils/MRUList.h \
     Src/Gui/LocalVarsView.h \
     Src/Gui/MessagesBreakpoints.h \
-    Src/Gui/AboutDialog.h
+    Src/Gui/AboutDialog.h \
+    Src/Gui/BreakpointMenu.h \
+    Src/Gui/ComboBoxDialog.h \
+    Src/Utils/VaHistory.h
     
 
 FORMS += \
@@ -334,7 +337,8 @@ FORMS += \
     Src/Gui/StructWidget.ui \
     Src/Gui/SimpleTraceDialog.ui \
     Src/Gui/MessagesBreakpoints.ui \
-    Src/Gui/AboutDialog.ui
+    Src/Gui/AboutDialog.ui \
+    Src/Gui/ComboBoxDialog.ui
 
 ##
 ## Libraries

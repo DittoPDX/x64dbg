@@ -13,6 +13,7 @@
 #include "EditFloatRegister.h"
 #include "SelectFields.h"
 #include "MiscUtil.h"
+#include "ldconvert.h"
 
 int RegistersView::getEstimateHeight()
 {
@@ -1292,16 +1293,10 @@ RegistersView::RegistersView(CPUWidget* parent) : QScrollArea(parent), mVScrollO
     mCANSTOREADDRESS.insert(DR3);
 
     mNoChange.insert(DR6);
-    mLABELDISPLAY.insert(DR6);
-    mONLYMODULEANDLABELDISPLAY.insert(DR6);
     mUINTDISPLAY.insert(DR6);
-    mCANSTOREADDRESS.insert(DR6);
 
     mNoChange.insert(DR7);
     mUINTDISPLAY.insert(DR7);
-    mONLYMODULEANDLABELDISPLAY.insert(DR7);
-    mCANSTOREADDRESS.insert(DR7);
-    mLABELDISPLAY.insert(DR7);
 
     mNoChange.insert(CIP);
     mUINTDISPLAY.insert(CIP);
@@ -1717,7 +1712,7 @@ void RegistersView::mouseMoveEvent(QMouseEvent* event)
         setCursor(QCursor(Qt::ArrowCursor));
     }
     if(!registerHelpInformation.isEmpty())
-        QToolTip::showText(event->globalPos(), registerHelpInformation, this);
+        QToolTip::showText(event->globalPos(), registerHelpInformation);
     else
         QToolTip::hideText();
     QScrollArea::mouseMoveEvent(event);
@@ -1833,14 +1828,12 @@ QString RegistersView::getRegisterLabel(REGISTER_NAME register_selected)
     }
     else if(!mONLYMODULEANDLABELDISPLAY.contains(register_selected))
     {
-        bool isCharacter = false;
         if(register_value == (register_value & 0xFF))
         {
             QChar c = QChar((char)register_value);
             if(c.isPrint())
             {
                 newText = QString("'%1'").arg((char)register_value);
-                isCharacter = IsCharacterRegister(register_selected);
             }
         }
         else if(register_value == (register_value & 0xFFF)) //UNICODE?
@@ -1849,7 +1842,6 @@ QString RegistersView::getRegisterLabel(REGISTER_NAME register_selected)
             if(c.isPrint())
             {
                 newText = "L'" + QString(c) + "'";
-                isCharacter = IsCharacterRegister(register_selected);
             }
         }
     }
@@ -2594,6 +2586,8 @@ void RegistersView::displayEditDialog()
             mLineEdit.setWindowIcon(DIcon("log.png"));
             mLineEdit.setCursorPosition(0);
             auto sizeRegister = int(GetSizeRegister(mSelected));
+            if(sizeRegister == 10)
+                mLineEdit.setFpuMode();
             mLineEdit.ForceSize(sizeRegister * 2);
             do
             {
@@ -2613,43 +2607,53 @@ void RegistersView::displayEditDialog()
                         fpuvalue = mLineEdit.editText.toUInt(&ok, 16);
                     else if(mFPUx87_80BITSDISPLAY.contains(mSelected))
                     {
-                        QByteArray pArray =  mLineEdit.editText.toLocal8Bit();
-
-                        if(pArray.size() == sizeRegister * 2)
+                        if(sizeRegister == 10 && mLineEdit.editText.contains(QChar('.')))
                         {
-                            char* pData = (char*) calloc(1, sizeof(char) * sizeRegister);
+                            char number[10];
+                            str2ld(mLineEdit.editText.toUtf8().constData(), number);
+                            setRegister(mSelected, reinterpret_cast<duint>(number));
+                            return;
+                        }
+                        else
+                        {
+                            QByteArray pArray =  mLineEdit.editText.toLocal8Bit();
 
-                            if(pData != NULL)
+                            if(pArray.size() == sizeRegister * 2)
                             {
-                                ok = true;
-                                char actual_char[3];
-                                for(int i = 0; i < sizeRegister; i++)
+                                char* pData = (char*) calloc(1, sizeof(char) * sizeRegister);
+
+                                if(pData != NULL)
                                 {
-                                    memset(actual_char, 0, sizeof(actual_char));
-                                    memcpy(actual_char, (char*) pArray.data() + (i * 2), 2);
-                                    if(! isxdigit(actual_char[0]) || ! isxdigit(actual_char[1]))
+                                    ok = true;
+                                    char actual_char[3];
+                                    for(int i = 0; i < sizeRegister; i++)
                                     {
-                                        ok = false;
-                                        break;
+                                        memset(actual_char, 0, sizeof(actual_char));
+                                        memcpy(actual_char, (char*) pArray.data() + (i * 2), 2);
+                                        if(! isxdigit(actual_char[0]) || ! isxdigit(actual_char[1]))
+                                        {
+                                            ok = false;
+                                            break;
+                                        }
+                                        pData[i] = (char)strtol(actual_char, NULL, 16);
                                     }
-                                    pData[i] = (char)strtol(actual_char, NULL, 16);
-                                }
 
-                                if(ok)
-                                {
-                                    if(!ConfigBool("Gui", "FpuRegistersLittleEndian")) // reverse byte order if it is big-endian
+                                    if(ok)
                                     {
-                                        pArray = ByteReverse(QByteArray(pData, sizeRegister));
-                                        setRegister(mSelected, reinterpret_cast<duint>(pArray.constData()));
+                                        if(!ConfigBool("Gui", "FpuRegistersLittleEndian")) // reverse byte order if it is big-endian
+                                        {
+                                            pArray = ByteReverse(QByteArray(pData, sizeRegister));
+                                            setRegister(mSelected, reinterpret_cast<duint>(pArray.constData()));
+                                        }
+                                        else
+                                            setRegister(mSelected, reinterpret_cast<duint>(pData));
                                     }
-                                    else
-                                        setRegister(mSelected, reinterpret_cast<duint>(pData));
+
+                                    free(pData);
+
+                                    if(ok)
+                                        return;
                                 }
-
-                                free(pData);
-
-                                if(ok)
-                                    return;
                             }
                         }
                     }
@@ -2844,16 +2848,14 @@ void RegistersView::appendRegister(QString & text, REGISTER_NAME reg, const char
 void RegistersView::onCopyAllAction()
 {
     QString text;
-    QClipboard* clipboard;
-    // Auto generated code
     appendRegister(text, REGISTER_NAME::CAX, "RAX : ", "EAX : ");
+    appendRegister(text, REGISTER_NAME::CBX, "RBX : ", "EBX : ");
     appendRegister(text, REGISTER_NAME::CCX, "RCX : ", "ECX : ");
     appendRegister(text, REGISTER_NAME::CDX, "RDX : ", "EDX : ");
-    appendRegister(text, REGISTER_NAME::CBX, "RBX : ", "EBX : ");
-    appendRegister(text, REGISTER_NAME::CDI, "RDI : ", "EDI : ");
     appendRegister(text, REGISTER_NAME::CBP, "RBP : ", "EBP : ");
-    appendRegister(text, REGISTER_NAME::CSI, "RSI : ", "ESI : ");
     appendRegister(text, REGISTER_NAME::CSP, "RSP : ", "ESP : ");
+    appendRegister(text, REGISTER_NAME::CSI, "RSI : ", "ESI : ");
+    appendRegister(text, REGISTER_NAME::CDI, "RDI : ", "EDI : ");
 #ifdef _WIN64
     appendRegister(text, REGISTER_NAME::R8, "R8  : ", "R8  : ");
     appendRegister(text, REGISTER_NAME::R9, "R9  : ", "R9  : ");
@@ -2866,28 +2868,22 @@ void RegistersView::onCopyAllAction()
 #endif
     appendRegister(text, REGISTER_NAME::CIP, "RIP : ", "EIP : ");
     appendRegister(text, REGISTER_NAME::EFLAGS, "RFLAGS : ", "EFLAGS : ");
+    appendRegister(text, REGISTER_NAME::ZF, "ZF : ", "ZF : ");
+    appendRegister(text, REGISTER_NAME::OF, "OF : ", "OF : ");
     appendRegister(text, REGISTER_NAME::CF, "CF : ", "CF : ");
     appendRegister(text, REGISTER_NAME::PF, "PF : ", "PF : ");
-    appendRegister(text, REGISTER_NAME::AF, "AF : ", "AF : ");
-    appendRegister(text, REGISTER_NAME::ZF, "ZF : ", "ZF : ");
     appendRegister(text, REGISTER_NAME::SF, "SF : ", "SF : ");
     appendRegister(text, REGISTER_NAME::TF, "TF : ", "TF : ");
-    appendRegister(text, REGISTER_NAME::IF, "IF : ", "IF : ");
+    appendRegister(text, REGISTER_NAME::AF, "AF : ", "AF : ");
     appendRegister(text, REGISTER_NAME::DF, "DF : ", "DF : ");
-    appendRegister(text, REGISTER_NAME::OF, "OF : ", "OF : ");
-    appendRegister(text, REGISTER_NAME::GS, "GS : ", "GS : ");
-    appendRegister(text, REGISTER_NAME::FS, "FS : ", "FS : ");
-    appendRegister(text, REGISTER_NAME::ES, "ES : ", "ES : ");
-    appendRegister(text, REGISTER_NAME::DS, "DS : ", "DS : ");
-    appendRegister(text, REGISTER_NAME::CS, "CS : ", "CS : ");
-    appendRegister(text, REGISTER_NAME::SS, "SS : ", "SS : ");
+    appendRegister(text, REGISTER_NAME::IF, "IF : ", "IF : ");
     appendRegister(text, REGISTER_NAME::LastError, "LastError : ", "LastError : ");
-    appendRegister(text, REGISTER_NAME::DR0, "DR0 : ", "DR0 : ");
-    appendRegister(text, REGISTER_NAME::DR1, "DR1 : ", "DR1 : ");
-    appendRegister(text, REGISTER_NAME::DR2, "DR2 : ", "DR2 : ");
-    appendRegister(text, REGISTER_NAME::DR3, "DR3 : ", "DR3 : ");
-    appendRegister(text, REGISTER_NAME::DR6, "DR6 : ", "DR6 : ");
-    appendRegister(text, REGISTER_NAME::DR7, "DR7 : ", "DR7 : ");
+    appendRegister(text, REGISTER_NAME::GS, "GS : ", "GS : ");
+    appendRegister(text, REGISTER_NAME::ES, "ES : ", "ES : ");
+    appendRegister(text, REGISTER_NAME::CS, "CS : ", "CS : ");
+    appendRegister(text, REGISTER_NAME::FS, "FS : ", "FS : ");
+    appendRegister(text, REGISTER_NAME::DS, "DS : ", "DS : ");
+    appendRegister(text, REGISTER_NAME::SS, "SS : ", "SS : ");
     if(mShowFpu)
     {
         appendRegister(text, REGISTER_NAME::x87r0, "x87r0 : ", "x87r0 : ");
@@ -2973,6 +2969,7 @@ void RegistersView::onCopyAllAction()
         appendRegister(text, REGISTER_NAME::XMM13, "XMM13 : ", "XMM13 : ");
         appendRegister(text, REGISTER_NAME::XMM14, "XMM14 : ", "XMM14 : ");
         appendRegister(text, REGISTER_NAME::XMM15, "XMM15 : ", "XMM15 : ");
+#endif
         appendRegister(text, REGISTER_NAME::YMM0, "YMM0  : ", "YMM0  : ");
         appendRegister(text, REGISTER_NAME::YMM1, "YMM1  : ", "YMM1  : ");
         appendRegister(text, REGISTER_NAME::YMM2, "YMM2  : ", "YMM2  : ");
@@ -2981,6 +2978,7 @@ void RegistersView::onCopyAllAction()
         appendRegister(text, REGISTER_NAME::YMM5, "YMM5  : ", "YMM5  : ");
         appendRegister(text, REGISTER_NAME::YMM6, "YMM6  : ", "YMM6  : ");
         appendRegister(text, REGISTER_NAME::YMM7, "YMM7  : ", "YMM7  : ");
+#ifdef _WIN64
         appendRegister(text, REGISTER_NAME::YMM8, "YMM8  : ", "YMM8  : ");
         appendRegister(text, REGISTER_NAME::YMM9, "YMM9  : ", "YMM9  : ");
         appendRegister(text, REGISTER_NAME::YMM10, "YMM10 : ", "YMM10 : ");
@@ -2991,8 +2989,14 @@ void RegistersView::onCopyAllAction()
         appendRegister(text, REGISTER_NAME::YMM15, "YMM15 : ", "YMM15 : ");
 #endif
     }
-    // Auto generated code end
-    clipboard = QApplication::clipboard();
+    appendRegister(text, REGISTER_NAME::DR0, "DR0 : ", "DR0 : ");
+    appendRegister(text, REGISTER_NAME::DR1, "DR1 : ", "DR1 : ");
+    appendRegister(text, REGISTER_NAME::DR2, "DR2 : ", "DR2 : ");
+    appendRegister(text, REGISTER_NAME::DR3, "DR3 : ", "DR3 : ");
+    appendRegister(text, REGISTER_NAME::DR6, "DR6 : ", "DR6 : ");
+    appendRegister(text, REGISTER_NAME::DR7, "DR7 : ", "DR7 : ");
+
+    auto clipboard = QApplication::clipboard();
     clipboard->setText(text);
 }
 

@@ -220,6 +220,7 @@ void SettingsDialog::LoadSettings()
     GetSettingBool("Gui", "NoForegroundWindow", &settings.guiNoForegroundWindow);
     GetSettingBool("Gui", "LoadSaveTabOrder", &settings.guiLoadSaveTabOrder);
     GetSettingBool("Gui", "ShowGraphRva", &settings.guiShowGraphRva);
+    GetSettingBool("Gui", "ShowExitConfirmation", &settings.guiShowExitConfirmation);
     ui->chkFpuRegistersLittleEndian->setChecked(settings.guiFpuRegistersLittleEndian);
     ui->chkSaveColumnOrder->setChecked(settings.guiSaveColumnOrder);
     ui->chkNoCloseDialog->setChecked(settings.guiNoCloseDialog);
@@ -228,6 +229,7 @@ void SettingsDialog::LoadSettings()
     ui->chkNoForegroundWindow->setChecked(settings.guiNoForegroundWindow);
     ui->chkSaveLoadTabOrder->setChecked(settings.guiLoadSaveTabOrder);
     ui->chkShowGraphRva->setChecked(settings.guiShowGraphRva);
+    ui->chkShowExitConfirmation->setChecked(settings.guiShowExitConfirmation);
 
     //Misc tab
     if(DbgFunctions()->GetJit)
@@ -290,7 +292,13 @@ void SettingsDialog::LoadSettings()
     bJitAutoOld = settings.miscSetJITAuto;
 
     GetSettingBool("Misc", "Utf16LogRedirect", &settings.miscUtf16LogRedirect);
+    GetSettingBool("Misc", "UseLocalHelpFile", &settings.miscUseLocalHelpFile);
+    GetSettingBool("Misc", "QueryProcessCookie", &settings.miscQueryProcessCookie);
+    GetSettingBool("Misc", "QueryWorkingSet", &settings.miscQueryWorkingSet);
     ui->chkUtf16LogRedirect->setChecked(settings.miscUtf16LogRedirect);
+    ui->chkUseLocalHelpFile->setChecked(settings.miscUseLocalHelpFile);
+    ui->chkQueryProcessCookie->setChecked(settings.miscQueryProcessCookie);
+    ui->chkQueryWorkingSet->setChecked(settings.miscQueryWorkingSet);
 }
 
 void SettingsDialog::SaveSettings()
@@ -356,6 +364,7 @@ void SettingsDialog::SaveSettings()
     BridgeSettingSetUint("Gui", "NoForegroundWindow", settings.guiNoForegroundWindow);
     BridgeSettingSetUint("Gui", "LoadSaveTabOrder", settings.guiLoadSaveTabOrder);
     BridgeSettingSetUint("Gui", "ShowGraphRva", settings.guiShowGraphRva);
+    BridgeSettingSetUint("Gui", "ShowExitConfirmation", settings.guiShowExitConfirmation);
 
     //Misc tab
     if(DbgFunctions()->GetJit)
@@ -382,6 +391,9 @@ void SettingsDialog::SaveSettings()
         BridgeSettingSet("Symbols", "CachePath", ui->editSymbolCache->text().toUtf8().constData());
     BridgeSettingSet("Misc", "HelpOnSymbolicNameUrl", ui->editHelpOnSymbolicNameUrl->text().toUtf8().constData());
     BridgeSettingSetUint("Misc", "Utf16LogRedirect", settings.miscUtf16LogRedirect);
+    BridgeSettingSetUint("Misc", "UseLocalHelpFile", settings.miscUseLocalHelpFile);
+    BridgeSettingSetUint("Misc", "QueryProcessCookie", settings.miscQueryProcessCookie);
+    BridgeSettingSetUint("Misc", "QueryWorkingSet", settings.miscQueryWorkingSet);
 
     BridgeSettingFlush();
     Config()->load();
@@ -802,4 +814,24 @@ void SettingsDialog::on_chkShowGraphRva_toggled(bool checked)
 {
     bTokenizerConfigUpdated = true;
     settings.guiShowGraphRva = checked;
+}
+
+void SettingsDialog::on_chkShowExitConfirmation_toggled(bool checked)
+{
+    settings.guiShowExitConfirmation = checked;
+}
+
+void SettingsDialog::on_chkUseLocalHelpFile_toggled(bool checked)
+{
+    settings.miscUseLocalHelpFile = checked;
+}
+
+void SettingsDialog::on_chkQueryProcessCookie_toggled(bool checked)
+{
+    settings.miscQueryProcessCookie = checked;
+}
+
+void SettingsDialog::on_chkQueryWorkingSet_toggled(bool checked)
+{
+    settings.miscQueryWorkingSet = checked;
 }

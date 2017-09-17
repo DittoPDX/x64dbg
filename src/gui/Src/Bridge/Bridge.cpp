@@ -14,19 +14,16 @@ static Bridge* mBridge;
 ************************************************************************************/
 Bridge::Bridge(QObject* parent) : QObject(parent)
 {
-    mBridgeMutex = new QMutex();
-    winId = 0;
-    scriptView = 0;
-    referenceManager = 0;
-    bridgeResult = 0;
-    hResultEvent = CreateEventW(nullptr, true, true, nullptr);
-    dbgStopped = false;
+    InitializeCriticalSection(&csBridge);
+    hResultEvent = CreateEventW(nullptr, true, true, nullptr);;
+    dwMainThreadId = GetCurrentThreadId();
 }
 
 Bridge::~Bridge()
 {
     CloseHandle(hResultEvent);
-    delete mBridgeMutex;
+    EnterCriticalSection(&csBridge);
+    DeleteCriticalSection(&csBridge);
 }
 
 void Bridge::CopyToClipboard(const QString & text)
@@ -70,11 +67,6 @@ void Bridge::initBridge()
 /************************************************************************************
                             Helper Functions
 ************************************************************************************/
-
-void Bridge::emitLoadSourceFile(const QString path, int line, int selection)
-{
-    emit loadSourceFile(path, line, selection);
-}
 
 void Bridge::emitMenuAddToList(QWidget* parent, QMenu* menu, int hMenu, int hParentMenu)
 {
@@ -360,7 +352,15 @@ void* Bridge::processMessage(GUIMSG type, void* param1, void* param2)
     case GUI_MENU_CLEAR:
     {
         BridgeResult result;
-        emit menuClearMenu((int)param1);
+        emit menuClearMenu((int)param1, false);
+        result.Wait();
+    }
+    break;
+
+    case GUI_MENU_REMOVE:
+    {
+        BridgeResult result;
+        emit menuRemoveMenuEntry((int)param1);
         result.Wait();
     }
     break;
@@ -486,7 +486,7 @@ void* Bridge::processMessage(GUIMSG type, void* param1, void* param2)
         break;
 
     case GUI_LOAD_SOURCE_FILE:
-        emitLoadSourceFile(QString((const char*)param1), (int)param2);
+        emit loadSourceFile(QString((const char*)param1), (int)param2, 0);
         break;
 
     case GUI_MENU_SET_ICON:
@@ -682,7 +682,7 @@ void* Bridge::processMessage(GUIMSG type, void* param1, void* param2)
     {
         BridgeResult result;
         emit loadGraph((BridgeCFGraphList*)param1, duint(param2));
-        result.Wait();
+        return (void*)result.Wait();
     }
     break;
 
@@ -810,6 +810,17 @@ void* Bridge::processMessage(GUIMSG type, void* param1, void* param2)
             emit setHotkeyMenuEntry(int(param1), params[0], params[1]);
             result.Wait();
         }
+    }
+    break;
+
+    case GUI_REF_ADDCOMMAND:
+    {
+        if(param1 == nullptr && param2 == nullptr)
+            return nullptr;
+        else if(param1 == nullptr)
+            emit referenceAddCommand(QString::fromUtf8((const char*)param2), QString::fromUtf8((const char*)param2));
+        else
+            emit referenceAddCommand(QString::fromUtf8((const char*)param1), QString::fromUtf8((const char*)param2));
     }
     break;
     }

@@ -164,6 +164,11 @@ void CPUInfoBox::disasmSelectionChanged(dsint parVA)
             bool ok;
             argMnemonic.toULongLong(&ok, 16);
             QString valText = DbgMemIsValidReadPtr(arg.value) ? ToPtrString(arg.value) : ToHexString(arg.value);
+            auto valTextSym = getSymbolicName(arg.value);
+            if(!valTextSym.contains(valText))
+                valText = QString("%1 %2").arg(valText, valTextSym);
+            else
+                valText = valTextSym;
             argMnemonic = !ok ? QString("%1]=[%2").arg(argMnemonic).arg(valText) : valText;
             QString sizeName = "";
             int memsize = basicinfo.memory.size;
@@ -182,14 +187,28 @@ void CPUInfoBox::disasmSelectionChanged(dsint parVA)
                 sizeName = "qword ptr";
                 break;
             }
+            sizeName.append(' ');
 
-#ifdef _WIN64
-            if(arg.segment == SEG_GS)
-                sizeName += "gs:";
-#else //x32
-            if(arg.segment == SEG_FS)
-                sizeName += "fs:";
-#endif
+            sizeName += [](SEGMENTREG seg)
+            {
+                switch(seg)
+                {
+                case SEG_ES:
+                    return "es:";
+                case SEG_DS:
+                    return "ds:";
+                case SEG_FS:
+                    return "fs:";
+                case SEG_GS:
+                    return "gs:";
+                case SEG_CS:
+                    return "cs:";
+                case SEG_SS:
+                    return "ss:";
+                default:
+                    return "";
+                }
+            }(arg.segment);
 
             if(bUpper)
                 sizeName = sizeName.toUpper();

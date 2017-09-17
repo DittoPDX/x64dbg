@@ -16,6 +16,10 @@ CPUMultiDump::CPUMultiDump(CPUDisassembly* disas, int nbCpuDumpTabs, QWidget* pa
     mMaxCPUDumpTabs = nbCpuDumpTabs;
     mInitAllDumpTabs = false;
 
+    mDumpPluginMenu = new QMenu(this);
+    mDumpPluginMenu->setIcon(DIcon("plugin.png"));
+    Bridge::getBridge()->emitMenuAddToList(this, mDumpPluginMenu, GUI_DUMP_MENU);
+
     for(uint i = 0; i < mMaxCPUDumpTabs; i++)
     {
         CPUDump* cpuDump = new CPUDump(disas, this);
@@ -149,8 +153,8 @@ void CPUMultiDump::printDumpAtSlot(dsint parVa)
             cpuDump = qobject_cast<CPUDump*>(widget(i));
             if(cpuDump)
             {
-                cpuDump->historyClear();
-                cpuDump->addVaToHistory(parVa);
+                cpuDump->mHistory.historyClear();
+                cpuDump->mHistory.addVaToHistory(parVa);
                 cpuDump->printDumpAt(parVa);
             }
         }
@@ -161,7 +165,7 @@ void CPUMultiDump::printDumpAtSlot(dsint parVa)
     {
         SwitchToDumpWindow();
         mCurrentCPUDump->printDumpAt(parVa);
-        mCurrentCPUDump->addVaToHistory(parVa);
+        mCurrentCPUDump->mHistory.addVaToHistory(parVa);
     }
 }
 
@@ -175,7 +179,7 @@ void CPUMultiDump::printDumpAtNSlot(duint parVa, int index)
         return;
     setCurrentIndex(tabindex);
     current->printDumpAt(parVa);
-    current->addVaToHistory(parVa);
+    current->mHistory.addVaToHistory(parVa);
 }
 
 void CPUMultiDump::selectionGetSlot(SELECTIONDATA* selectionData)

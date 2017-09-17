@@ -74,7 +74,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(Bridge::getBridge(), SIGNAL(menuAddMenu(int, QString)), this, SLOT(addMenu(int, QString)));
     connect(Bridge::getBridge(), SIGNAL(menuAddMenuEntry(int, QString)), this, SLOT(addMenuEntry(int, QString)));
     connect(Bridge::getBridge(), SIGNAL(menuAddSeparator(int)), this, SLOT(addSeparator(int)));
-    connect(Bridge::getBridge(), SIGNAL(menuClearMenu(int)), this, SLOT(clearMenu(int)));
+    connect(Bridge::getBridge(), SIGNAL(menuClearMenu(int, bool)), this, SLOT(clearMenu(int, bool)));
     connect(Bridge::getBridge(), SIGNAL(menuRemoveMenuEntry(int)), this, SLOT(removeMenuEntry(int)));
     connect(Bridge::getBridge(), SIGNAL(getStrWindow(QString, QString*)), this, SLOT(getStrWindow(QString, QString*)));
     connect(Bridge::getBridge(), SIGNAL(setIconMenu(int, QIcon)), this, SLOT(setIconMenu(int, QIcon)));
@@ -451,6 +451,30 @@ void MainWindow::setupLanguagesMenu()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    if(DbgIsDebugging() && ConfigBool("Gui", "ShowExitConfirmation"))
+    {
+        auto cb = new QCheckBox(tr("Don't ask this question again"));
+        QMessageBox msgbox(this);
+        msgbox.setText(tr("The debuggee is still running and will be terminated if you exit. Do you really want to exit?"));
+        msgbox.setWindowTitle(tr("Debuggee is still running"));
+        msgbox.setWindowIcon(DIcon("bug.png"));
+        msgbox.addButton(QMessageBox::Yes);
+        msgbox.addButton(QMessageBox::No);
+        msgbox.setDefaultButton(QMessageBox::No);
+        msgbox.setCheckBox(cb);
+
+        QObject::connect(cb, &QCheckBox::toggled, [](bool checked)
+        {
+            Config()->setBool("Gui", "ShowExitConfirmation", !checked);
+        });
+
+        if(msgbox.exec() != QMessageBox::Yes)
+        {
+            event->ignore();
+            return;
+        }
+    }
+
     duint noClose = 0;
     if(bCanClose)
     {
@@ -1023,11 +1047,11 @@ void MainWindow::addMenu(int hMenu, QString title)
         Bridge::getBridge()->setResult(-1);
         return;
     }
-    int hMenuNew = hMenuNext++;
+    int hMenuNew = hEntryMenuPool++;
     QWidget* parent = hMenu == -1 ? this : menu->parent;
     QMenu* wMenu = new QMenu(title, parent);
     wMenu->menuAction()->setVisible(false);
-    mMenuList.push_back(MenuInfo(parent, wMenu, hMenuNew, hMenu, menu->globalMenu));
+    mMenuList.push_back(MenuInfo(parent, wMenu, hMenuNew, hMenu, !menu || menu->globalMenu));
     if(hMenu == -1) //top-level
         ui->menuBar->addMenu(wMenu);
     else //deeper level
@@ -1047,13 +1071,13 @@ void MainWindow::addMenuEntry(int hMenu, QString title)
         return;
     }
     MenuEntryInfo newInfo;
-    int hEntryNew = hEntryNext++;
+    int hEntryNew = hEntryMenuPool++;
     newInfo.hEntry = hEntryNew;
     newInfo.hParentMenu = hMenu;
     QWidget* parent = hMenu == -1 ? this : menu->parent;
     QAction* wAction = new QAction(title, parent);
     wAction->setObjectName(QString().sprintf("ENTRY|%d", hEntryNew));
-    wAction->setShortcutContext(menu->globalMenu ? Qt::ApplicationShortcut : Qt::WidgetShortcut);
+    wAction->setShortcutContext((!menu || menu->globalMenu) ? Qt::ApplicationShortcut : Qt::WidgetShortcut);
     parent->addAction(wAction);
     connect(wAction, SIGNAL(triggered()), this, SLOT(menuEntrySlot()));
     newInfo.mAction = wAction;
@@ -1082,48 +1106,64 @@ void MainWindow::addSeparator(int hMenu)
     Bridge::getBridge()->setResult();
 }
 
-void MainWindow::clearMenu(int hMenu)
+void MainWindow::clearMenuHelper(int hMenu)
 {
-    if(!mMenuList.size() || hMenu == -1)
-    {
-        Bridge::getBridge()->setResult();
-        return;
-    }
-    const MenuInfo* menu = findMenu(hMenu);
     //delete menu entries
-    for(int i = mEntryList.size() - 1; i > -1; i--)
-    {
+    for(auto i = mEntryList.size() - 1; i != -1; i--)
         if(hMenu == mEntryList.at(i).hParentMenu) //we found an entry that has the menu as parent
-        {
-            QWidget* parent = menu == 0 ? this : menu->parent;
-            parent->removeAction(mEntryList.at(i).mAction);
-            delete mEntryList.at(i).mAction; //delete the entry object
             mEntryList.erase(mEntryList.begin() + i);
-        }
-    }
-    //recursively delete the menus
-    for(int i = mMenuList.size() - 1; i > -1; i--)
+    //delete the menus
+    std::vector<int> menuClearQueue;
+    for(auto i = mMenuList.size() - 1; i != -1; i--)
     {
         if(hMenu == mMenuList.at(i).hParentMenu) //we found a menu that has the menu as parent
         {
-            clearMenu(mMenuList.at(i).hMenu); //delete children menus
-            delete mMenuList.at(i).mMenu; //delete the child menu object
-            mMenuList.erase(mMenuList.begin() + i); //delete the child entry
+            menuClearQueue.push_back(mMenuList.at(i).hMenu);
+            mMenuList.erase(mMenuList.begin() + i);
         }
     }
-    //hide the empty menu
-    if(menu)
-        menu->mMenu->menuAction()->setVisible(false);
+    //recursively clear the menus
+    for(auto & hMenu : menuClearQueue)
+        clearMenuHelper(hMenu);
+}
+
+void MainWindow::clearMenu(int hMenu, bool erase)
+{
+    //this recursively removes the entries from mEntryList and mMenuList
+    clearMenuHelper(hMenu);
+    for(auto it = mMenuList.begin(); it != mMenuList.end(); ++it)
+    {
+        auto & curMenu = *it;
+        if(hMenu == curMenu.hMenu)
+        {
+            if(erase)
+            {
+                auto parentMenu = findMenu(curMenu.hParentMenu);
+                if(parentMenu)
+                {
+                    parentMenu->mMenu->removeAction(curMenu.mMenu->menuAction()); //remove the QMenu from the parent
+                    if(parentMenu->mMenu->actions().empty()) //hide the parent if it is now empty
+                        parentMenu->mMenu->menuAction()->setVisible(false);
+                }
+                it = mMenuList.erase(it);
+            }
+            else
+            {
+                curMenu.mMenu->clear(); //clear the QMenu
+                curMenu.mMenu->menuAction()->setVisible(false);
+            }
+            break;
+        }
+    }
     Bridge::getBridge()->setResult();
 }
 
 void MainWindow::initMenuApi()
 {
     //256 entries are reserved
-    mEntryList.clear();
-    hEntryNext = 256;
-    mMenuList.clear();
-    hMenuNext = 256;
+    hEntryMenuPool = 256;
+    mEntryList.reserve(1024);
+    mMenuList.reserve(1024);
 }
 
 void MainWindow::menuEntrySlot()
@@ -1137,22 +1177,28 @@ void MainWindow::menuEntrySlot()
     }
 }
 
-void MainWindow::removeMenuEntry(int hEntry)
+void MainWindow::removeMenuEntry(int hEntryMenu)
 {
+    //find and remove the hEntryMenu from the mEntryList
     for(int i = 0; i < mEntryList.size(); i++)
     {
-        if(mEntryList.at(i).hEntry == hEntry)
+        if(mEntryList.at(i).hEntry == hEntryMenu)
         {
-            const MenuEntryInfo & entry = mEntryList.at(i);
-            const MenuInfo* menu = findMenu(entry.hParentMenu);
-            QWidget* parent = menu == 0 ? this : menu->parent;
-            parent->removeAction(entry.mAction);
-            delete entry.mAction;
-            mEntryList.erase(mEntryList.begin() + i);
-            break;
+            auto & entry = mEntryList.at(i);
+            auto parentMenu = findMenu(entry.hParentMenu);
+            if(parentMenu)
+            {
+                parentMenu->mMenu->removeAction(entry.mAction);
+                if(parentMenu->mMenu->actions().empty())
+                    parentMenu->mMenu->menuAction()->setVisible(false);
+                mEntryList.erase(mEntryList.begin() + i);
+            }
+            Bridge::getBridge()->setResult();
+            return;
         }
     }
-    Bridge::getBridge()->setResult();
+    //if hEntryMenu is not in mEntryList, clear+erase it from mMenuList
+    clearMenu(hEntryMenu, true);
 }
 
 void MainWindow::setIconMenuEntry(int hEntry, QIcon icon)
@@ -1502,9 +1548,15 @@ void MainWindow::changeCommandLine()
 
 void MainWindow::displayManual()
 {
-    // Open the Windows CHM in the upper directory
-    if(!QDesktopServices::openUrl(QUrl(QUrl::fromLocalFile(QString("%1/../x64dbg.chm").arg(QCoreApplication::applicationDirPath())))))
-        SimpleErrorBox(this, tr("Error"), tr("Manual cannot be opened. Please check if x64dbg.chm exists and ensure there is no other problems with your system."));
+    duint setting = 0;
+    if(BridgeSettingGetUint("Misc", "UseLocalHelpFile", &setting) && setting)
+    {
+        // Open the Windows CHM in the upper directory
+        if(!QDesktopServices::openUrl(QUrl(QUrl::fromLocalFile(QString("%1/../x64dbg.chm").arg(QCoreApplication::applicationDirPath())))))
+            SimpleErrorBox(this, tr("Error"), tr("Manual cannot be opened. Please check if x64dbg.chm exists and ensure there is no other problems with your system."));
+    }
+    else
+        QDesktopServices::openUrl(QUrl("http://help.x64dbg.com"));
 }
 
 void MainWindow::canClose()
